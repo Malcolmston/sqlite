@@ -26,6 +26,7 @@ const (
 	TypeBlob
 )
 
+// String returns the SQL type name (e.g. "INTEGER", "TEXT", "NULL").
 func (t ValueType) String() string {
 	switch t {
 	case TypeNull:
