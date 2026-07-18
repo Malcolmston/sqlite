@@ -232,7 +232,15 @@ func projectionHasAggregate(proj []projColumn) bool {
 func containsAggregate(expr Expr) bool {
 	switch e := expr.(type) {
 	case *FuncExpr:
-		return isAggregateName(e.Name)
+		if isAggregateName(e.Name) {
+			return true
+		}
+		for _, a := range e.Args {
+			if containsAggregate(a) {
+				return true
+			}
+		}
+		return false
 	case *UnaryExpr:
 		return containsAggregate(e.Expr)
 	case *BinaryExpr:
@@ -394,7 +402,19 @@ func evalAgg(expr Expr, rows []*evalRow, args []Value) (Value, error) {
 		if isAggregateName(e.Name) {
 			return computeAggregate(e, rows)
 		}
-		return Null(), fmt.Errorf("sqlite: unknown function %s()", e.Name)
+		fn, ok := LookupScalar(e.Name)
+		if !ok {
+			return Null(), fmt.Errorf("sqlite: unknown function %s()", e.Name)
+		}
+		argv := make([]Value, len(e.Args))
+		for i, a := range e.Args {
+			av, err := evalAgg(a, rows, args)
+			if err != nil {
+				return Null(), err
+			}
+			argv[i] = av
+		}
+		return fn(argv)
 	case *Literal:
 		return e.Val, nil
 	case *Param:

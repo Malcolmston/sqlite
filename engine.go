@@ -95,7 +95,22 @@ func eval(expr Expr, env *evalRow) (Value, error) {
 	case *LikeExpr:
 		return evalLike(e, env)
 	case *FuncExpr:
-		return Null(), fmt.Errorf("sqlite: aggregate %s() not allowed here", e.Name)
+		if isAggregateName(e.Name) {
+			return Null(), fmt.Errorf("sqlite: aggregate %s() not allowed here", e.Name)
+		}
+		fn, ok := LookupScalar(e.Name)
+		if !ok {
+			return Null(), fmt.Errorf("sqlite: unknown function %s()", e.Name)
+		}
+		argv := make([]Value, len(e.Args))
+		for i, a := range e.Args {
+			av, err := eval(a, env)
+			if err != nil {
+				return Null(), err
+			}
+			argv[i] = av
+		}
+		return fn(argv)
 	default:
 		return Null(), fmt.Errorf("sqlite: cannot evaluate expression %T", expr)
 	}
