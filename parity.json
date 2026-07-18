@@ -1,0 +1,10 @@
+{
+  "repo": "sqlite",
+  "upstream": "sqlite/sqlite",
+  "parityBefore": "92%",
+  "parityAfter": "100%",
+  "upstreamCasesSynced": 73,
+  "gapsFound": 5,
+  "gapsClosed": 5,
+  "asOf": "2026-07-18"
+}

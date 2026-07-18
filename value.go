@@ -110,6 +110,14 @@ func (v Value) String() string {
 	case TypeInteger:
 		return strconv.FormatInt(v.i, 10)
 	case TypeReal:
+		// Match SQLite's textual rendering of non-finite reals ("Inf"/"-Inf")
+		// rather than Go's "+Inf".
+		if math.IsInf(v.f, 1) {
+			return "Inf"
+		}
+		if math.IsInf(v.f, -1) {
+			return "-Inf"
+		}
 		return strconv.FormatFloat(v.f, 'g', -1, 64)
 	case TypeText:
 		return v.s

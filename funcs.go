@@ -3,6 +3,7 @@ package sqlite
 import (
 	"bytes"
 	"encoding/hex"
+	"fmt"
 	"math"
 	"sort"
 	"strconv"
@@ -347,6 +348,16 @@ func Round(v, digits Value) Value {
 	if d < 0 {
 		d = 0
 	}
+	// SQLite caps the requested precision at 30 digits; beyond that the value is
+	// already at (or past) the resolution of a float64, so rounding is a no-op.
+	// Clamping also prevents 10**d from overflowing to +Inf, which would turn a
+	// finite input into NaN.
+	if d > 30 {
+		d = 30
+	}
+	if math.IsInf(x, 0) || math.IsNaN(x) {
+		return Real(x)
+	}
 	pow := math.Pow(10, float64(d))
 	return Real(math.Round(x*pow) / pow)
 }
@@ -423,7 +434,17 @@ func Quote(v Value) Value {
 	switch v.Type {
 	case TypeNull:
 		return Text("NULL")
-	case TypeInteger, TypeReal:
+	case TypeInteger:
+		return Text(v.String())
+	case TypeReal:
+		// SQLite renders non-finite reals as the sentinel literals ±9.0e+999
+		// rather than "Inf", so that the quoted text is itself parseable SQL.
+		if math.IsInf(v.f, 1) {
+			return Text("9.0e+999")
+		}
+		if math.IsInf(v.f, -1) {
+			return Text("-9.0e+999")
+		}
 		return Text(v.String())
 	case TypeBlob:
 		return Text("X'" + strings.ToUpper(hex.EncodeToString(v.b)) + "'")
@@ -598,6 +619,12 @@ var funcScalarRegistry = map[string]ScalarFunc{
 	"ABS": func(a []Value) (Value, error) {
 		if len(a) != 1 {
 			return Null(), funcArity("abs")
+		}
+		// abs() of the most-negative 64-bit integer cannot be represented as a
+		// positive integer; SQLite reports "integer overflow" rather than
+		// silently promoting to REAL.
+		if a[0].Type == TypeInteger && a[0].i == math.MinInt64 {
+			return Null(), fmt.Errorf("integer overflow")
 		}
 		return Abs(a[0]), nil
 	},

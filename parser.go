@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -908,15 +909,22 @@ func numberLiteral(text string) (Expr, error) {
 	if strings.ContainsAny(text, ".eE") {
 		f, err := strconv.ParseFloat(text, 64)
 		if err != nil {
+			// A magnitude too large to represent overflows to ±Inf, which
+			// SQLite accepts as a valid floating-point literal (rendered by
+			// quote() as ±9.0e+999). Any other error is a genuine syntax error.
+			if errors.Is(err, strconv.ErrRange) {
+				return &Literal{Val: Real(f)}, nil
+			}
 			return nil, fmt.Errorf("sqlite: invalid number %q: %w", text, err)
 		}
 		return &Literal{Val: Real(f)}, nil
 	}
 	n, err := strconv.ParseInt(text, 10, 64)
 	if err != nil {
-		// Fall back to float for out-of-range integers.
+		// Fall back to float for out-of-range integers (including overflow to
+		// ±Inf, matching SQLite's handling of oversized numeric literals).
 		f, ferr := strconv.ParseFloat(text, 64)
-		if ferr != nil {
+		if ferr != nil && !errors.Is(ferr, strconv.ErrRange) {
 			return nil, fmt.Errorf("sqlite: invalid number %q: %w", text, err)
 		}
 		return &Literal{Val: Real(f)}, nil
